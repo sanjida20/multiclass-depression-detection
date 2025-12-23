@@ -10,7 +10,7 @@ from transformers import pipeline
 
 EXCLUDED_GLOBAL_TOKENS = {"<URL>", "<USER>"}
 
-st.title("🧪 Multiclass Depression Detection")
+st.title("🧠 Multiclass Depression Detection")
 
 @st.cache_resource
 def load_model(model_path):
