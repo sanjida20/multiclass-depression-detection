@@ -39,6 +39,7 @@ The four models were trained and tested using the best hyperparameters identifie
 - Recall
 - F1-Score
 - Area Under the Curve (AUC)
+
 The results are summarized in the table below:
 """)
 st.image("images/results.png", caption="Comparison of Transformer-Based Models")
