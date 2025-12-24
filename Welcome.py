@@ -51,7 +51,7 @@ st.title("🧠 Multiclass Depression Detection Platform")
 tab_about, tab_info, tab_analysis = st.tabs([
     "📋 About", 
     "ℹ️ Information about Depression", 
-    "🔍 Text Analysis"
+    "🔍 Multiclass Depression Detector"
 ])
 
 # TAB 1: ABOUT
@@ -80,7 +80,7 @@ with tab_about:
     
     ### 🎯 How to Use This Platform
     
-    1. Navigate to the **"🔍 Text Analysis"** tab
+    1. Navigate to the **"🔍 Multiclass Depression Detector"** tab
     2. Enter or paste social media text for analysis
     3. Select your preferred AI model
     4. View the depression type prediction
@@ -127,9 +127,9 @@ with tab_info:
     """)
     st.image("images/nlp.jpg", caption="There are 5.66 billion (68.7% of total population) social media user identities in October 2025", width=600)
 
-# TAB 3: TEXT ANALYSIS
+# TAB 3: Multiclass Depression Detector
 with tab_analysis:
-    st.header("🔍 Text Analysis for Multiclass Depression Detection")
+    st.header("🔍 Multiclass Depression Detector")
     EXCLUDED_GLOBAL_TOKENS = {"<URL>", "<USER>"}
 
     @st.cache_resource
@@ -846,4 +846,5 @@ st.divider()
 st.caption("""
 ⚠️ **Disclaimer**: This platform is for research and educational purposes only. Not a clinical diagnostic tool. 
 If you or someone you know is experiencing mental health concerns, please consult a qualified healthcare professional or contact emergency services.
+
 """)
