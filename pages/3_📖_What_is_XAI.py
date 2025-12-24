@@ -58,6 +58,6 @@ st.header("⚠️ Important Safety Note")
 
 st.markdown("""
 - This system does **not** provide medical advice
-- Results should not be used for self-diagnosis
-- If you are concerned about mental health, please seek support from a qualified professional
+- Prediction results and XAI explanations should not be used for self-diagnosis
+- If you or someone you know is experiencing mental health concerns, please consult a qualified healthcare professional or contact emergency services.
 """)
