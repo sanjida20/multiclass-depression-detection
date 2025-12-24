@@ -82,7 +82,7 @@ with tab_about:
     
     1. Navigate to the **"🔍 Multiclass Depression Detector"** tab
     2. Enter or paste social media text for analysis
-    3. Select your preferred AI model
+    3. Select your preferred transformer-based predictive model
     4. View the depression type prediction
     5. Explore XAI explanations to understand model decisions
     
@@ -848,3 +848,4 @@ st.caption("""
 If you or someone you know is experiencing mental health concerns, please consult a qualified healthcare professional or contact emergency services.
 
 """)
+
