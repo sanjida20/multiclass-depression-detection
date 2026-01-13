@@ -19,7 +19,7 @@ st.markdown(
         - **Source:** Public dataset, originally scraped from X (Twitter) using Apify. *(Muhammad Osama Nusrat et al., 2023)* 
         - **Size:** The dataset contains **~14,996** rows with two columns: *text* and *label*.
         - **Target classes:** Bipolar, Atypical, Psychotic, Major Depressive, Postpartum, No Depression.
-        - **Features:** raw social media text (tweets) and annotated labels.
+        - **Features:** Raw social media text (tweets) and annotated labels.
         - **Annotation:** Manual, context-aware labeling by the research team.
         """
     )
@@ -33,7 +33,7 @@ st.header("How the Dataset was Created")
 st.markdown(
     dedent(
         """
-        - Since no public dataset existed for these depression subtypes in tweets, the dataset was **constructed from scratch**.
+        - Since no public dataset existed for these depression subtypes in tweets, the dataset was **constructed from scratch**. *(Muhammad Osama Nusrat et al., 2023)*
         - Researchers **created lexicons for each subtype, verified them with a psychiatrist**, and scraped tweets using Apify.
         - The scraped tweets were **manually annotated**. Importantly, a tweet was labeled only if the context made it clear the author was describing their own condition.
 

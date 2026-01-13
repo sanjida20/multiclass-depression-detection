@@ -365,58 +365,122 @@ with tab_analysis:
         # wrap in a container for better spacing
         return "<div style='line-height:1.6; padding:6px 2px;'>" + " ".join(html_parts) + "</div>"
 
-    def interpret_local_ig(top_words, class_name):
-        """
-        Generate a human-readable explanation for local Integrated Gradients output.
-        """
-        if not top_words:
-            return (
-                "The model did not find any strongly influential words in this text. "
-                "This usually happens when the prediction is made based on overall context "
-                "rather than specific keywords."
-            )
+    # New helpers for improved local interpretation
+    from collections import defaultdict
 
-        word_list = ", ".join([f"“{w}”" for w in top_words[:5]])
+    def compute_local_aggregates(merged_words, merged_attrs):
+        """
+        Aggregate cleaned tokens for local explanation.
+        Returns:
+        - agg_list: list of dicts sorted by abs(sum_attr) desc, each dict:
+            {'word': w, 'sum_attr': s, 'count': c, 'mean_attr': m, 'signed_mean': sm}
+        - total_abs: sum of abs of all attributions (float)
+        """
+        agg = defaultdict(lambda: {"sum": 0.0, "count": 0})
+        total_abs = 0.0
 
-        return (
-            f"The model predicted **{class_name}** mainly because it focused on words such as "
-            f"{word_list}. These words contributed positively to the prediction, meaning that "
-            f"their presence increased the model’s confidence in this outcome."
+        for w, a in zip(merged_words, merged_attrs):
+            if not w:
+                continue
+            w_clean = normalize_explanation_word(re.sub(r"^[^\w']+|[^\w']+$", "", w.strip(), flags=re.UNICODE))
+            if not w_clean:
+                continue
+            # include all tokens for local aggregation (supporting + opposing)
+            agg[w_clean]["sum"] += float(a)
+            agg[w_clean]["count"] += 1
+            total_abs += abs(float(a))
+
+        agg_list = []
+        for w, v in agg.items():
+            s = v["sum"]
+            c = v["count"]
+            m = s / c if c else 0.0
+            agg_list.append({
+                "word": w,
+                "sum_attr": s,
+                "count": c,
+                "mean_attr": m,
+                "abs_sum": abs(s)
+            })
+
+        # sort by absolute total contribution (descending)
+        agg_list = sorted(agg_list, key=lambda x: x["abs_sum"], reverse=True)
+        return agg_list, (total_abs if total_abs != 0 else 1.0)
+
+
+    def interpret_local_ig(agg_list, class_name, top_k=5):
+        """
+        Short, plain-English summary for the local explanation.
+        agg_list: output from compute_local_aggregates
+        """
+        if not agg_list:
+            return "The model did not find any strongly influential words in this text."
+
+        # top supporting words (positive sums)
+        top_support = [it for it in agg_list if it["sum_attr"] > 0][:top_k]
+        top_support_text = ", ".join([f"“{it['word']}”" for it in top_support[:3]]) if top_support else "no obvious positive keywords"
+
+        summary = (
+            f"**Model’s best prediction:** {class_name} *(this is a screening output, not a clinical diagnosis)*.\n\n"
         )
+        return summary
 
-    def interpret_local_ig_detailed(merged_words, merged_attrs, class_name, top_k=5):
-        pairs = list(zip(merged_words, merged_attrs))
-        pairs = [(w, float(a)) for w, a in pairs if w and not re.fullmatch(r"\W+", w)]
 
-        if not pairs:
+    def interpret_local_ig_detailed(agg_list, class_name, total_abs, top_k=10):
+        """
+        Detailed, human-friendly breakdown.
+        - Shows top supporting and top opposing words
+        - Reports percent contribution of each top word relative to the whole-text attribution magnitude
+        - Gives a gentle 'what to do next' suggestion
+        """
+        if not agg_list:
             return "No meaningful word contributions were identified for this prediction."
 
+        # split supporting/opposing
+        supporting = [it for it in agg_list if it["sum_attr"] > 0]
+        opposing = [it for it in agg_list if it["sum_attr"] < 0]
+
         # sort by absolute contribution
-        pairs_sorted = sorted(pairs, key=lambda x: abs(x[1]), reverse=True)
-        top_pairs = pairs_sorted[:top_k]
+        supporting = sorted(supporting, key=lambda x: abs(x["sum_attr"]), reverse=True)[:top_k]
+        opposing = sorted(opposing, key=lambda x: abs(x["sum_attr"]), reverse=True)[:top_k]
+
+        def fmt(item):
+            pct = abs(item["sum_attr"]) / total_abs * 100
+            sign = "+" if item["sum_attr"] > 0 else "-"
+            return f"**{item['word']}**: {sign}{abs(item['sum_attr']):.3f} ({pct:.1f}% of text contribution, occurrences={item['count']})"
 
         lines = []
-        for w, a in top_pairs:
-            direction = "supports" if a > 0 else "reduces confidence in"
-            strength = "strongly" if abs(a) > abs(top_pairs[0][1]) * 0.7 else "moderately"
-            sign = "+" if a > 0 else ""
-            lines.append(
-                f"- **{w}**: {sign}{a:.3f} ({strength} {direction} the prediction)"
-            )
+        lines.append("")
+        if supporting:
+            lines.append("**Top supporting words:**")
+            for it in supporting:
+                lines.append(f"- {fmt(it)}")
+        else:
+            lines.append("No strong supporting words detected.")
 
-        explanation = (
-            f"The model predicts this text as **{class_name}**.\n\n"
-            f"Each word contributes differently to this prediction. "
-            f"Positive contribution scores push the prediction toward **{class_name}**, "
-            f"while negative scores push it away.\n\n"
-            f"**Top Word Contributions:**\n" +
-            "\n".join(lines) +
-            f"\n\nThe most influential word is **{top_pairs[0][0]}**, "
-            f"which has the strongest impact on the prediction.\n\n"
-            f"*Note: Attribution scores are relative and do not represent probabilities or clinical diagnoses.*"
+        lines.append("")
+        if opposing:
+            lines.append("**Top opposing words (these decreased support for the predicted class):**")
+            for it in opposing:
+                lines.append(f"- {fmt(it)}")
+        else:
+            lines.append("No strong opposing words detected.")
+
+        # emphasize the most influential word (if present)
+        top_overall = max(agg_list, key=lambda x: x["abs_sum"])
+        top_pct = top_overall["abs_sum"] / total_abs * 100
+        lines.append("")
+        lines.append(f"The most influential word is **{top_overall['word']}**, accounting for {top_pct:.1f}% of the text's total attribution magnitude.")
+
+        # gentle guidance
+        lines.append("")
+        lines.append(
+            "_Note: Attribution scores are relative and are not a clinical diagnosis. "
+            "If this output resonates with your experience, consider reaching out to a health professional or support line._"
         )
 
-        return explanation
+        return "\n\n".join(lines)
+
 
     # ------------------ End Integrated Gradients helpers ------------------
 
@@ -738,12 +802,50 @@ with tab_analysis:
                         if class_count <= 1:
                             st.info(f"Class **{class_name}** has only {class_count} sample in this dataset. Therefore, this explanation reflects the importance of words in that single sample rather than a general pattern.")
 
-                        fig, ax = plt.subplots(figsize=(8, 3))
-                        ax.bar(range(len(vals)), vals)
-                        ax.set_xticks(range(len(vals)))
-                        ax.set_xticklabels(words, rotation=45, ha='right', fontsize=8)
-                        ax.set_ylabel('Mean attribution score')
-                        ax.set_title(f"Top {len(words)} Words Supporting class: {class_name}  (n={class_count})")
+                        # Prepare pairs and sort descending by attribution
+                        pairs = list(zip(words, vals))
+                        pairs_sorted = sorted(pairs, key=lambda x: x[1], reverse=True)
+                        words_sorted = [p[0] for p in pairs_sorted]
+                        vals_sorted = [p[1] for p in pairs_sorted]
+
+                        # Dynamic figure height so labels don't overlap
+                        fig, ax = plt.subplots(figsize=(8, max(2.5, 0.4 * len(words_sorted))))
+
+                        ax.barh(words_sorted, vals_sorted, align='center')
+                        ax.invert_yaxis()  # largest on top
+                        ax.set_xlabel('Mean Integrated Gradients Attribution Score')
+                        ax.set_title(f"Top {len(words_sorted)} Words Supporting Class: {class_name}  (n={class_count})")
+
+                        # Annotate numeric values safely (inside OR outside)
+                        max_val = max(vals_sorted) if vals_sorted else 1.0
+
+                        # Ensure space on the right for outside labels
+                        ax.set_xlim(0, max_val * 1.18)
+
+                        for i, v in enumerate(vals_sorted):
+                            # if bar is wide enough, label inside
+                            if v >= 0.07 * max_val:
+                                ax.text(
+                                    v * 0.98,
+                                    i,
+                                    f"{v:.3f}",
+                                    va='center',
+                                    ha='right',
+                                    fontsize=8,
+                                    color='white'
+                                )
+                            else:
+                                # bar is short, label outside
+                                ax.text(
+                                    v + 0.01 * max_val,
+                                    i,
+                                    f"{v:.3f}",
+                                    va='center',
+                                    ha='left',
+                                    fontsize=8,
+                                    color='black'
+                                )
+
                         plt.tight_layout()
                         st.pyplot(fig)
 
@@ -768,6 +870,32 @@ with tab_analysis:
             # If there is exactly one text being predicted, compute Integrated Gradients explanation
             if single_text_for_xai is not None:
                 try:
+                    # Fixed plain-English summary per class (single-input)
+                    summary_card = {
+                        "Major Depressive Disorder": "Language patterns commonly linked to persistent low mood, loss of interest, and hopelessness.",
+                        "Postpartum Depression": "Language patterns often related to new-parent stress, low mood, and difficulty coping after childbirth.",
+                        "Psychotic Depression": "Language may show unusual beliefs, disorganized thoughts, or perceptual disturbances; this is a sensitive flag.",
+                        "Bipolar Depression": "Language showing mood swings or periods of both elevated and low mood.",
+                        "Atypical Depression": "Language often associated with increased sleep, increased appetite, and mood reactivity.",
+                        "No Depression": "The text does not show clear linguistic signals associated with depressive states according to the model."
+                    }
+
+                    # Use the first prediction as the single prediction label if available
+                    single_pred_label = None
+                    try:
+                        if 'predictions' in locals() and len(predictions) > 0:
+                            single_pred_label = predictions[0]
+                    except Exception:
+                        single_pred_label = None
+
+                    # Fallback: try to infer from target_label after IG runs (kept as fallback)
+                    summary_text = summary_card.get(single_pred_label, None)
+                    if summary_text:
+                        st.info(f"Summary: **{summary_text}**")
+                    else:
+                        # If predictions not present for some reason, skip summary for now (we'll display label after IG)
+                        pass
+                    
                     with st.spinner("Computing Integrated Gradients explanation…"):
                         merged_words, merged_attrs, target_label = integrated_gradients(tokenizer, model, single_text_for_xai, steps=30)
 
@@ -790,34 +918,84 @@ with tab_analysis:
                     top_pairs = pos_pairs_sorted[:top_n]
 
                     # ---- Local explanation interpretation ----
-                    top_words_local = [w for w, _ in top_pairs]
-                    interpretation_text = interpret_local_ig(top_words_local, pred_label_name)
+                    #top_words_local = [w for w, _ in top_pairs]
+                    #interpretation_text = interpret_local_ig(top_words_local, pred_label_name)
 
                     if len(top_pairs) > 0:
                         words_top = [p[0] for p in top_pairs]
                         vals_top = [p[1] for p in top_pairs]
 
-                        fig, ax = plt.subplots(figsize=(8, 3))
-                        ax.bar(range(len(vals_top)), vals_top)
-                        ax.set_xticks(range(len(vals_top)))
-                        ax.set_xticklabels(words_top, rotation=45, ha='right', fontsize=8)
-                        ax.set_ylabel('Attribution Score')
-                        ax.set_title(f"Top {len(words_top)} Words Supporting Prediction")
-                        plt.tight_layout()
-                        st.pyplot(fig)
+                        # Prepare local pairs sorted by attribution
+                        # Aggregate duplicate cleaned words (positive attributions only) for local chart
+                        from collections import defaultdict
+
+                        # Build aggregated positive attributions keyed by cleaned word
+                        agg_pos = defaultdict(float)
+                        counts = defaultdict(int)
+
+                        for w, a in zip(merged_words, merged_attrs):
+                            # clean token to a human-friendly word (reuse your helper)
+                            w_clean = normalize_explanation_word(re.sub(r"^[^\w']+|[^\w']+$", "", w.strip(), flags=re.UNICODE))
+                            if not w_clean:
+                                continue
+                            if w_clean in EXCLUDED_GLOBAL_TOKENS:
+                                continue
+                            # only consider positive contributions for supporting-words chart
+                            if float(a) > 0:
+                                agg_pos[w_clean] += float(a)
+                                counts[w_clean] += 1
+
+                        # Convert to sorted list (descending by summed attribution)
+                        pairs_local_sorted = sorted(agg_pos.items(), key=lambda x: x[1], reverse=True)
+
+                        # Pick top-N to display (same as before)
+                        top_n = min(10, len(pairs_local_sorted))
+                        if top_n == 0:
+                            st.info("No positive supporting tokens found to plot.")
+                        else:
+                            # Unzip top pairs
+                            words_local_sorted, vals_local_sorted = zip(*pairs_local_sorted[:top_n])
+
+                            # Convert to lists (safe for indexing)
+                            words_local_sorted = list(words_local_sorted)
+                            vals_local_sorted = list(vals_local_sorted)
+
+                            # Plot horizontal bars
+                            fig, ax = plt.subplots(figsize=(8, max(2.5, 0.5 * len(words_local_sorted))))
+                            ax.barh(words_local_sorted, vals_local_sorted, align='center')
+                            ax.invert_yaxis()
+                            ax.set_xlabel('Integrated Gradients Attribution Score')
+                            ax.set_title(f"Top {len(words_local_sorted)} Words Supporting Prediction")
+
+                            # numeric annotation: inside if wide enough, else outside (and expand xlim to fit)
+                            max_local = max(vals_local_sorted) if vals_local_sorted else 1.0
+                            # ensure some right padding for outside labels
+                            ax.set_xlim(0, max_local * 1.18)
+
+                            for i, v in enumerate(vals_local_sorted):
+                                # threshold for "wide enough" — tune as needed (7% of max here)
+                                if v >= 0.07 * max_local:
+                                    # place inside bar, right-aligned, white text
+                                    ax.text(v * 0.98, i, f"{v:.3f}", va='center', ha='right', fontsize=8, color='white')
+                                else:
+                                    # place just outside bar, left-aligned, black text (guaranteed inside axes because of set_xlim)
+                                    ax.text(v + 0.01 * max_local, i, f"{v:.3f}", va='center', ha='left', fontsize=8, color='black')
+
+                            plt.tight_layout()
+                            st.pyplot(fig)
                     else:
                         st.info("No positive supporting tokens found to plot.")
 
                     st.subheader("**Interpreting the Prediction**")
-                    detailed_text = interpret_local_ig_detailed(
-                        merged_words,
-                        merged_attrs,
-                        pred_label_name,
-                        top_k=5
-                    )
+                    agg_list, total_abs = compute_local_aggregates(merged_words, merged_attrs)
+
+                    # Short summary (friendly)
+                    interpretation_text = interpret_local_ig(agg_list, pred_label_name, top_k=5)
+                    st.write(interpretation_text)
+                    detailed_text = interpret_local_ig_detailed(agg_list, pred_label_name, total_abs, top_k=5)
                     st.markdown(detailed_text)
 
-                    # --- Full attribution table + download (for single-input local explanation) ---
+                    # Full attribution table + download (for single-input local explanation)
                     # Prepare cleaned display words and the corresponding scores
                     display_words = []
                     display_scores = []
