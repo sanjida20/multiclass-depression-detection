@@ -17,7 +17,7 @@ st.markdown(
     dedent(
         """
         - **Source:** Public dataset, originally scraped from X (Twitter) using Apify. *(Muhammad Osama Nusrat et al., 2023)* 
-        - **Size:** The dataset contains **~14,996** rows with two columns: *text* and *label*.
+        - **Size:** The dataset contains **~14,996** rows with two columns: *Tweets* and *Labels*.
         - **Target classes:** Bipolar, Atypical, Psychotic, Major Depressive, Postpartum, No Depression.
         - **Features:** Raw social media text (tweets) and annotated labels.
         - **Annotation:** Manual, context-aware labeling by the research team.
@@ -97,7 +97,7 @@ st.markdown(
         """
         - **Keyword bias:** Since tweets were collected using lexicons (e.g. "I have X"), models can become sensitive to explicit mentions of conditions. This helps precision for explicit posts but may miss implicit or ambiguous descriptions.
         - **Symptom overlap:** Words like "sleep", "tired", or "anxiety" appear across classes (and sometimes in non-depressed posts). This can cause confusion between related classes (e.g., atypical vs. major depression).
-        - **Comorbidity signals:** Terms such as "anxiety" or "PTSD" in the major-depressive subset indicate comorbidity; the model may learn to associate these with certain labels even though they are not definitive.
+        - **Comorbidity signals:** Terms such as "anxiety" or "PTSD" in the major-depressive subset indicate comorbidity; the model may learn to associate these with certain labels even though they are not certain indicators.
         - **Context dependence:** Tweets that describe feelings without explicitly naming a condition are often ambiguous; the model may predict incorrectly when the author is describing general distress rather than a particular disorder.
         - **Platform differences:** Platform-specific language differs in style, length, or vocabulary compared to X/Twitter. Domain shift may reduce performance.
 
