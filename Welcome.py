@@ -445,9 +445,12 @@ with tab_analysis:
         opposing = sorted(opposing, key=lambda x: abs(x["sum_attr"]), reverse=True)[:top_k]
 
         def fmt(item):
-            pct = abs(item["sum_attr"]) / total_abs * 100
+            #pct = abs(item["sum_attr"]) / total_abs * 100
             sign = "+" if item["sum_attr"] > 0 else "-"
-            return f"**{item['word']}**: {sign}{abs(item['sum_attr']):.3f} ({pct:.1f}% of text contribution, occurrences={item['count']})"
+            return (
+                f"**{item['word']}**: {sign}{abs(item['sum_attr']):.3f} "
+                f"(occurrences={item['count']})"
+            )
 
         lines = []
         lines.append("")
@@ -468,9 +471,12 @@ with tab_analysis:
 
         # emphasize the most influential word (if present)
         top_overall = max(agg_list, key=lambda x: x["abs_sum"])
-        top_pct = top_overall["abs_sum"] / total_abs * 100
+        #top_pct = top_overall["abs_sum"] / total_abs * 100
         lines.append("")
-        lines.append(f"The most influential word is **{top_overall['word']}**, accounting for {top_pct:.1f}% of the text's total attribution magnitude.")
+        lines.append(
+            f"The most influential word is **{top_overall['word']}**, "
+            "as it has the highest absolute attribution score in this text."
+        )
 
         # gentle guidance
         lines.append("")
@@ -1026,4 +1032,5 @@ st.caption("""
 If you or someone you know is experiencing mental health concerns, please consult a qualified healthcare professional or contact emergency services.
 
 """)
+
 
